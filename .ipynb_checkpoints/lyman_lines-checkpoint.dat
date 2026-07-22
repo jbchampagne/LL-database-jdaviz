@@ -1,0 +1,6 @@
+Line Name,rest_wavelength,wavelength_unit,source_list,element,extra_info,rest_wavelength_angstrom
+Ly e,937.814,Angstrom,Common_Galactic_700A-2000A.csv,H,{},937.814
+Ly d,949.742,Angstrom,Common_Galactic_700A-2000A.csv,H,{},949.742
+Ly b,1025.722,Angstrom,Common_Galactic_700A-2000A.csv,H,{},1025.722
+Ly a,1215.67,Angstrom,Common_Galactic_700A-2000A.csv,H,{},1215.67
+Lyalpha,1215.24,Angstrom,SDSS.csv,H,"{""Type"": ""Emission"", ""Weight-Galaxy"": 0.0, ""Weight-Quasar"": 9.0}",1215.24

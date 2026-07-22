@@ -1,0 +1,52 @@
+core_columns:
+- line_name
+- rest_wavelength
+- wavelength_unit
+- source_list
+extra_info_columns_by_file:
+  Atomic-ISO.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: um
+    extra_cols:
+    - transition
+    - error
+    - ep
+    - ip
+    - reference
+    - notes
+  Atomic-Ionic.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: um
+    extra_cols:
+    - Error
+    - Reference
+  Atomic-Ionic_FineStructure.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: um
+    extra_cols:
+    - Error
+    - Reference
+  CO-band-heads.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: um
+    extra_cols:
+    - frequency
+  CO.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: um
+    extra_cols: []
+  Common_Galactic_700A-2000A.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: Angstrom
+    extra_cols: []
+  Common_Galactic_2000A-11000A.csv:
+    rest_wavelength_col: Rest Value
+    wavelength_unit: Angstrom
+    extra_cols: []
+wavelength_sanity_bounds:
+  um:
+  - 0.01
+  - 250
+  Angstrom:
+  - 50
+  - 300000
