@@ -35,7 +35,7 @@ def load_db(db_file=DB_FILE):
 
 
 def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None, unit="Angstrom",
-              extra_filters=None, element=None):
+              extra_filters=None, element=None, science_case=None):
     """
     Return a filtered copy of the database.
 
@@ -63,6 +63,9 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
         "H", "Fe", "H2", "CO", "PAH". This is element/molecule-level only
         (not ionization state) -- see list_elements() to discover what's
         available.
+    science_case : str, optional
+        Exact match (case-insensitive) on the 'science_case' column, currently
+        hardcoded as galactic, nebular, molecular, or stellar.
 
     Returns
     -------
@@ -88,7 +91,7 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
     if wave_min is not None or wave_max is not None:
         std_col = "rest_wavelength_angstrom" if "rest_wavelength_angstrom" in db.colnames else None
         if std_col is not None:
-            converted = (db[std_col] * u.Angstrom).to_value(u.Unit(unit))
+            converted = (np.asarray(db[std_col]) * u.Angstrom).to_value(u.Unit(unit))
         else:
             converted = np.array([
                 (row["rest_wavelength"] * u.Unit(row["wavelength_unit"])).to_value(u.Unit(unit))
@@ -98,6 +101,9 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
             mask &= converted >= wave_min
         if wave_max is not None:
             mask &= converted <= wave_max
+
+    if science_case is not None and "science_case" in db.colnames:
+        mask &= np.char.lower(db["science_case"].astype(str)) == science_case.lower()
 
     if extra_filters:
         candidate_idx = np.where(mask)[0]
@@ -118,6 +124,7 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
                     ok = False
                     break
             keep[i] = ok
+
         extra_mask = np.zeros(len(db), dtype=bool)
         extra_mask[candidate_idx[keep]] = True
         mask &= extra_mask
