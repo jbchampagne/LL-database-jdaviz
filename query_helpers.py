@@ -1,8 +1,7 @@
 """
 query_helpers.py
 ----------------
-User-friendly functions for querying and appending to emission_lines.ecsv,
-so nobody needs to write SQL or raw astropy masking to use the database.
+User-friendly functions for querying and appending to emission_lines.ecsv.
 
 Examples
 --------
@@ -38,8 +37,7 @@ def load_db(db_file=DB_FILE):
 def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None, unit="Angstrom",
               extra_filters=None, element=None):
     """
-    Return a filtered copy of the database. All arguments are optional and
-    combine as AND conditions.
+    Return a filtered copy of the database.
 
     Parameters
     ----------
@@ -56,20 +54,15 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
         Defaults to Angstrom since the database carries a standardized
         rest_wavelength_angstrom column for every row.
     extra_filters : dict, optional
-        Filter directly on fields inside the per-row extra_info JSON blob,
-        without manually parsing JSON yourself. Keys are field names (e.g.
-        "Type", "Reference"), values are what they must equal. String
+        Filter directly on fields inside the per-row extra_info JSON blob.
+        Keys are field names (e.g. "Type", "Reference"). String
         comparisons are case-insensitive; rows missing the field are excluded.
-        Only rows still passing the other filters are checked, so this stays
-        cheap even though it means unpacking JSON.
         e.g. extra_filters={"Type": "Emission"} on the SDSS files.
     element : str, optional
         Exact match (case-insensitive) on the coarse 'element' column, e.g.
         "H", "Fe", "H2", "CO", "PAH". This is element/molecule-level only
         (not ionization state) -- see list_elements() to discover what's
-        available. Rows the tagger couldn't confidently classify (~0.3% of
-        the database -- things like "Sky" or bare Fraunhofer letter codes)
-        are excluded from every element= query, since they have no tag.
+        available.
 
     Returns
     -------
@@ -95,10 +88,8 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
     if wave_min is not None or wave_max is not None:
         std_col = "rest_wavelength_angstrom" if "rest_wavelength_angstrom" in db.colnames else None
         if std_col is not None:
-            # fast path: reuse the precomputed standardized column
             converted = (db[std_col] * u.Angstrom).to_value(u.Unit(unit))
         else:
-            # fallback: convert each row's native unit individually
             converted = np.array([
                 (row["rest_wavelength"] * u.Unit(row["wavelength_unit"])).to_value(u.Unit(unit))
                 for row in db
@@ -136,9 +127,7 @@ def get_lines(db, name_contains=None, source=None, wave_min=None, wave_max=None,
 
 def list_elements(db):
     """
-    List the distinct element/molecule tags present in the database, with a
-    count of how many lines carry each -- for populating a UI dropdown of
-    filterable species without hardcoding the list.
+    List the distinct element/molecule tags present in the database.
 
     Returns
     -------
@@ -281,10 +270,7 @@ def to_jdaviz_line_list(db_subset, unit="Angstrom"):
     """
     Convert a (subset of the) database into the minimal QTable schema jdaviz's
     Line Lists plugin expects: a 'linename' column and a 'rest' column carrying
-    a Quantity. Useful for testing whether jdaviz slowdowns are due to line
-    count/rendering (try a small subset) vs. the extra columns in our own
-    consolidated schema (line_name, wavelength_unit, source_list, extra_info,
-    rest_wavelength_angstrom), which jdaviz doesn't use natively.
+    a Quantity.
 
     Parameters
     ----------
@@ -304,7 +290,7 @@ def to_jdaviz_line_list(db_subset, unit="Angstrom"):
     --------
     >>> from query_helpers import load_db, get_lines, to_jdaviz_line_list
     >>> db = load_db()
-    >>> small = get_lines(db, wave_min=6000, wave_max=7000)  # ~handful of lines
+    >>> small = get_lines(db, wave_min=6000, wave_max=7000)
     >>> line_list = to_jdaviz_line_list(small)
     >>> viz.load_line_list(line_list)   # in jdaviz
     """
@@ -370,10 +356,7 @@ def append_file(filename, rest_wavelength_col, wavelength_unit, extra_cols=None,
     new_tbl["extra_info"] = extras
 
     existing = Table.read(db_file, format="ascii.ecsv")
-
-    # detect the standardized-unit column already present in the database
-    # (e.g. "rest_wavelength_angstrom") and populate it for the new rows too,
-    # so appending never leaves the standardized column out of sync.
+    
     std_cols = [c for c in existing.colnames if c.startswith("rest_wavelength_") and c != "rest_wavelength"]
     if std_cols:
         std_col = std_cols[0]

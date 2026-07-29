@@ -13,7 +13,7 @@ To add a NEW source file later:
     2. Add an entry for it under `extra_info_columns_by_file` in schema.yaml
        (rest_wavelength_col, wavelength_unit, and any extra columns to keep).
     3. Re-run `python ingest.py`. It will re-read *all* source files and
-       rebuild emission_lines.ecsv from scratch (safe/idempotent), OR see
+       rebuild emission_lines.ecsv from scratch, OR see
        `append_new_file()` below to add just one file to an existing database.
 """
 
@@ -43,22 +43,17 @@ GREEK_TO_NAME = {
 }
 
 # --- coarse element/molecule extraction ------------------------------------
-# Deliberately coarse (element/molecule only, not ionization state) because
-# ion-level notation is wildly inconsistent across these files ("[FeII]" vs
-# "Fe II" vs "CIV 12-9"). See ingest.py commit notes / conversation history
-# for the full survey this was validated against (1445 unique names).
-
 MOLECULE_PREFIXES = ["H2", "CO", "O2", "CH", "PAH"]
 
-# named hydrogen series / shorthand that never spells "H" + roman numeral
+# named hydrogen series / shorthand
 HYDROGEN_PATTERNS = [
-    re.compile(r'^Ly'),                        # Ly, Ly a, Ly b, Ly d, Ly e, Lyalpha (post Greek-transliteration)
+    re.compile(r'^Ly'),                        # Ly, Ly a, Ly b, Ly d, Ly e, Lyalpha
     re.compile(r'^La\b'),                      # Lyman alpha shorthand
     re.compile(r'^Pa\s*\d'),                   # Pa9, Pa10 ...
     re.compile(r'^Pa\s*[a-z]'),                # Pa d, Pa g, Pa ae
     re.compile(r'^P[dg]\b'),                   # Pd, Pg (Paschen delta/gamma shorthand)
     re.compile(r'^H(alpha|beta|gamma|delta|epsilon|zeta|eta|theta)\b'),  # transliterated Greek Balmer
-    re.compile(r'^H\s?[a-z]\b'),                # Ha/Hb/Hd/He/Hg, and "H a"/"H b" (spaced)
+    re.compile(r'^H\s?[a-z]\b'),                # Ha/Hb/Hd/He/Hg
     re.compile(r'^H\d{1,2}\b'),                  # H8-H21 numbered Balmer
     re.compile(r'^HI\b'),                        # "HI series limit" safety net
 ]
@@ -69,8 +64,7 @@ PAREN_SPECIES_RE = re.compile(r'\(([A-Z][a-z]?)\s?' + _ROMAN + r'\b')
 BARE_ELEMENT_RE = re.compile(r'^[A-Z][a-z]?$')
 
 # single-letter tokens that are ambiguous historical/Fraunhofer shorthand in
-# these particular files (SDSS.csv), not reliable element indicators --
-# left unparsed rather than guessed
+# these particular files (SDSS.csv), not reliable element indicators
 AMBIGUOUS_BARE_TOKENS = {"G", "K"}
 
 
@@ -79,8 +73,7 @@ def extract_element(name):
     Best-effort coarse element/molecule tag for a line name, e.g. "Fe", "H",
     "H2", "CO", "PAH". Returns None when the name is too ambiguous to tag
     confidently (e.g. "Sky", bare "G"/"K" Fraunhofer shorthand, or a blended
-    feature listed as "Si IV + O I" -- for blends this returns the first
-    listed species rather than guessing further).
+    feature listed as "Si IV + O I").
     """
     s = name.strip()
 
@@ -111,10 +104,9 @@ def extract_element(name):
 
 
 def _clean_value(v):
-    """Turn NaN / empty-ish values into None so they drop out of the JSON blob,
-    transliterate Greek letters (e.g. the Balmer-series names in SDSS-IV.csv:
-    Hα/Hβ/Hγ/Hδ/Hε/Hζ) so they survive as distinct, readable names instead of
-    being silently deleted, and strip any other stray non-ASCII garbage."""
+    """Turn NaN values into None so they drop out of the JSON blob,
+    transliterate Greek letters so they survive as distinct, readable names
+    instead of being silently deleted, and strip any other stray non-ASCII garbage."""
     if pd.isna(v):
         return None
     if isinstance(v, str):
@@ -139,9 +131,7 @@ def read_one_file(filename, file_schema):
     unit_str = file_schema["wavelength_unit"]
     extra_cols = file_schema.get("extra_cols", [])
     element_override = file_schema.get("element_override")  # for files whose names don't encode species
-
-    # validate the unit is a real astropy unit
-    unit = u.Unit(unit_str)
+    science_case = file_schema.get("science_case", "")  # e.g. galactic, stellar, nebular, molecular
 
     # validate wavelength column exists and sanity-check the range
     if wave_col not in df.columns:
@@ -152,7 +142,7 @@ def read_one_file(filename, file_schema):
         name = _clean_value(row["Line Name"])
         wave = _clean_value(row[wave_col])
         if name is None or wave is None:
-            continue  # skip malformed rows rather than silently corrupting the DB
+            continue
 
         extra = {}
         for col in extra_cols:
@@ -165,7 +155,10 @@ def read_one_file(filename, file_schema):
         waves.append(float(wave))
         extras.append(json.dumps(extra) if extra else "{}")
         sources.append(filename)
-        elements.append(element_override if element_override else (extract_element(str(name)) or ""))
+        # use "0" (not "") for unresolved elements so the column round-trips as a
+        # plain (unmasked) string column -- avoids ECSV masked-column ambiguity
+        # and the default astropy fill_value of "N/A" for missing entries
+        elements.append(element_override if element_override else (extract_element(str(name)) or "0"))
 
     tbl = Table()
     tbl["line_name"] = names
@@ -174,8 +167,9 @@ def read_one_file(filename, file_schema):
     tbl["source_list"] = sources
     tbl["element"] = elements
     tbl["extra_info"] = extras
+    tbl["science_case"] = [science_case] * len(names)
 
-    tbl["rest_wavelength"].unit = None  # keep raw float; unit is tracked in wavelength_unit col
+    tbl["rest_wavelength"].unit = None
     tbl.meta["source_file_units"] = {filename: unit_str}
     return tbl
 
@@ -197,7 +191,6 @@ def add_standard_unit_column(master, target_unit="Angstrom"):
     Add a rest_wavelength_<unit> column with every row converted to a single
     common unit, so the database is usable without doing per-row unit math.
     The original rest_wavelength + wavelength_unit columns are kept as-is
-    (they reflect the precision/rounding of the original source file).
     """
     target = u.Unit(target_unit)
     converted = np.array([
@@ -206,6 +199,7 @@ def add_standard_unit_column(master, target_unit="Angstrom"):
     ])
     col_name = f"rest_wavelength_{target_unit.lower().replace(' ', '_')}"
     master[col_name] = converted
+    master[col_name].unit = target  # attach unit so QTable.read() returns a Quantity column
     return master, col_name
 
 
@@ -226,15 +220,18 @@ def build_database(schema_file=SCHEMA_FILE, output_file=OUTPUT_FILE, standard_un
 
     master.meta = {
         "description": "Consolidated emission line database",
-        "core_columns": schema["core_columns"] + [std_col, "element"],
-        "note": f"'{std_col}' gives every row's wavelength converted to {standard_unit}, "
-                "for convenience -- no unit math needed for basic use. "
+        "core_columns": schema["core_columns"] + [std_col, "element", "science_case"],
+        "note": f"'{std_col}' gives every row's wavelength converted to {standard_unit} "
+                "(with an attached astropy unit, so it reads directly into a QTable as a "
+                "Quantity column) -- no unit math needed for basic use. "
                 "'rest_wavelength' + 'wavelength_unit' preserve the original value exactly "
-                "as given in the source file (e.g. original significant figures). "
+                "as given in the source file (i.e. original significant figures). "
                 "'element' is a best-effort COARSE element/molecule tag (e.g. 'Fe', 'H', "
                 "'H2', 'CO', 'PAH') -- not ionization state -- derived from line_name; "
-                "it is '' (empty) where the name was too ambiguous to tag confidently. "
-                "extra_info is a JSON string of any per-source-file metadata.",
+                "it is '0' where the name was too ambiguous to tag confidently. "
+                "'science_case' is a coarse per-source-file science-use tag "
+                "(e.g. 'galactic', 'stellar', 'nebular', 'molecular'). "
+                "'extra_info' is a JSON string of any per-source-file metadata.",
     }
 
     sanity_check(master, schema)
