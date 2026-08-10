@@ -322,7 +322,7 @@ def to_jdaviz_line_list(db_subset, unit="Angstrom"):
 
 
 def append_file(filename, rest_wavelength_col, wavelength_unit, extra_cols=None,
-                db_file=DB_FILE, schema_file=SCHEMA_FILE):
+                db_file=DB_FILE, schema_file=SCHEMA_FILE, source_name=None):
     """
     Append a new source CSV file to the existing database (and record it
     in schema.yaml so future rebuilds stay reproducible).
@@ -341,22 +341,60 @@ def append_file(filename, rest_wavelength_col, wavelength_unit, extra_cols=None,
     """
     extra_cols = extra_cols or []
 
-    df = pd.read_csv(filename, skipinitialspace=True)
-    df.columns = [c.strip() for c in df.columns]
-
-    unit = u.Unit(wavelength_unit)  # validates the unit string
+    # accept filename as either a path string, a file-like object (e.g. io.StringIO),
+    # or an astropy Table/QTable. When passing a file-like or Table, caller must
+    # provide source_name so that the row 'source_list' and schema key are stable.
+    from astropy.table import Table as AstropyTable
 
     names, waves, extras, sources = [], [], [], []
-    for _, row in df.iterrows():
-        name = row["Line Name"]
-        wave = row[rest_wavelength_col]
-        if pd.isna(name) or pd.isna(wave):
-            continue
-        extra = {c: row[c] for c in extra_cols if c in df.columns and not pd.isna(row[c])}
-        names.append(str(name).strip())
-        waves.append(float(wave))
-        extras.append(json.dumps(extra) if extra else "{}")
-        sources.append(filename)
+
+    if isinstance(filename, AstropyTable):
+        tbl_in = filename
+        filename_for_schema = source_name or getattr(filename, "name", None)
+        if filename_for_schema is None:
+            raise ValueError("When passing an astropy Table, provide source_name")
+        if "Line Name" not in tbl_in.colnames or rest_wavelength_col not in tbl_in.colnames:
+            raise ValueError("Input Table must contain 'Line Name' and the specified rest_wavelength_col")
+
+        for row in tbl_in:
+            name = row["Line Name"]
+            wave = row[rest_wavelength_col]
+            if pd.isna(name) or pd.isna(wave):
+                continue
+            extra = {c: row[c] for c in extra_cols if c in tbl_in.colnames and not pd.isna(row[c])}
+            names.append(str(name).strip())
+            waves.append(float(wave))
+            extras.append(json.dumps(extra) if extra else "{}")
+            sources.append(filename_for_schema)
+
+        unit = u.Unit(wavelength_unit)  # validates the unit string
+
+    else:
+        # path string or file-like object
+        if hasattr(filename, "read"):
+            df = pd.read_csv(filename, skipinitialspace=True)
+            filename_for_schema = source_name or getattr(filename, "name", None)
+            if filename_for_schema is None:
+                raise ValueError("When passing a file-like object, provide source_name")
+        else:
+            df = pd.read_csv(filename, skipinitialspace=True)
+            filename_for_schema = filename
+
+        df.columns = [c.strip() for c in df.columns]
+
+        unit = u.Unit(wavelength_unit)  # validates the unit string
+
+        for _, row in df.iterrows():
+            name = row["Line Name"]
+            wave = row[rest_wavelength_col]
+            if pd.isna(name) or pd.isna(wave):
+                continue
+            extra = {c: row[c] for c in extra_cols if c in df.columns and not pd.isna(row[c])}
+            names.append(str(name).strip())
+            waves.append(float(wave))
+            extras.append(json.dumps(extra) if extra else "{}")
+            sources.append(filename_for_schema)
+
 
     new_tbl = Table()
     new_tbl["line_name"] = names
@@ -380,7 +418,7 @@ def append_file(filename, rest_wavelength_col, wavelength_unit, extra_cols=None,
     # record this file in schema.yaml for reproducibility of future full rebuilds
     with open(schema_file, "r") as f:
         schema = yaml.safe_load(f)
-    schema["extra_info_columns_by_file"][filename] = {
+    schema["extra_info_columns_by_file"][filename_for_schema] = {
         "rest_wavelength_col": rest_wavelength_col,
         "wavelength_unit": wavelength_unit,
         "extra_cols": extra_cols,
@@ -388,6 +426,6 @@ def append_file(filename, rest_wavelength_col, wavelength_unit, extra_cols=None,
     with open(schema_file, "w") as f:
         yaml.safe_dump(schema, f, sort_keys=False)
 
-    print(f"Appended {len(new_tbl)} rows from {filename}."
+    print(f"Appended {len(new_tbl)} rows from {filename_for_schema}."
           f" Database now has {len(merged)} rows total.")
     return merged
