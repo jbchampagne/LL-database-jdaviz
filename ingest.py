@@ -275,7 +275,7 @@ def build_database(schema_file=SCHEMA_FILE, output_file=OUTPUT_FILE, standard_un
 
     master, std_col = add_standard_unit_column(master, target_unit=standard_unit)
 
-    #master = deduplicate_line_names(master, std_col)
+    master = deduplicate_line_names(master, std_col)
 
     master.meta = {
         "description": "Consolidated emission line database",

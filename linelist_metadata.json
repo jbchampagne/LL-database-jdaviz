@@ -6,8 +6,8 @@
   },
   "Common Nebular": {
     "units": "Angstrom",
-    "filename_base": "Common_nebular",
-    "Citations/Notes": " Common nebular lines.\n\n Copyright (C) 1999-2004 by Christian Buil\n http://www.astrosurf.com/buil/us/spe2/hresol5.htm"
+    "filename_base": "Common_nebular,
+    "Citations/Notes": " Common nebular lines from NIST \n https://physics.nist.gov/PhysRefData/ASD/lines_form.html"
   },
   "Galactic 700A-2000A": {
     "units": "Angstrom",
