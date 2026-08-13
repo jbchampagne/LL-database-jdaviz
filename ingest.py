@@ -246,10 +246,12 @@ def deduplicate_line_names(master, angstrom_col):
     unique_2nd, counts_2nd = np.unique(master['line_name'], return_counts=True)
     duplicated_2nd = set(unique_2nd[counts_2nd > 1])
 
-    for i, name in enumerate(duplicated_2nd):
+    for name in duplicated_2nd:
         all_dupes = np.where(master["line_name"] == name)[0]
         all_science_cases = np.array(master[all_dupes]["science_case"])
-        master["science_case"][i] = list(all_science_cases)
+        # write the combined list onto the first occurrence, since that's the
+        # row `np.unique(..., return_index=True)` below will keep
+        master["science_case"][all_dupes[0]] = list(all_science_cases)
 
     _, idx = np.unique(master["line_name"], return_index=True)
     master = master[np.sort(idx)]
